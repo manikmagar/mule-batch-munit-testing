@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:spring="http://www.springframework.org/schema/beans"
+	xmlns:synchronize="http://www.mulesoft.org/schema/mule/synchronize"
+	xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns:core="http://www.mulesoft.org/schema/mule/core" xmlns:mock="http://www.mulesoft.org/schema/mule/mock"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/synchronize http://www.mulesoft.org/schema/mule/synchronize/current/mule-synchronize.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/mock http://www.mulesoft.org/schema/mule/mock/current/mule-mock.xsd">
+	<munit:config name="munit" doc:name="MUnit configuration" />
+	<spring:beans>
+		<spring:import resource="classpath:mule-config.xml" />
+	</spring:beans>
+
+	<munit:test name="batch-test-input-phase"
+		description="Verifies that MessedUp records are not loaded in input phase.">
+
+		<mock:spy messageProcessor="mule:logger" doc:name="Spy For On complete">
+			<mock:with-attributes>
+				<mock:with-attribute name="doc:name" whereValue="#['EndLogger']" />
+			</mock:with-attributes>
+			<mock:assertions-before-call>
+				<munit:assert-on-equals message="#['Number of loaded records must be 1']"
+					expectedValue="#[1L]" actualValue="#[payload.loadedRecords]"
+					doc:name="Assert Equals" />
+			</mock:assertions-before-call>
+		</mock:spy>
+
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[
+	{
+		"id": 1,
+		"status": 'Ready',
+		"type": 'CoffeeOrder'
+	},{
+		"id": -1,
+		"status": 'MessedUp',
+		"type": 'ABCDERTREGDFG'
+	}
+]]]></dw:set-payload>
+		</dw:transform-message>
+
+		<synchronize:run-and-wait timeout="1000000"
+			doc:name="Synchronize">
+			<batch:execute name="mule-simple-batch" doc:name="Run Batch mule-simple-batch" />
+		</synchronize:run-and-wait>
+
+		<mock:verify-call messageProcessor="mule:logger"
+			doc:name="Verify End Logger Call">
+            <mock:with-attributes>
+                <mock:with-attribute name="doc:name" whereValue="#['EndLogger']"/>
+            </mock:with-attributes>
+		</mock:verify-call>
+	</munit:test>
+
+	<munit:test name="batch-test-validate-successful-recordcount"
+		description="Verifies the number of successful records after batch execution">
+		<mock:spy messageProcessor="mule:logger" doc:name="Spy For On complete">
+			<mock:with-attributes>
+				<mock:with-attribute name="doc:name" whereValue="#['EndLogger']" />
+			</mock:with-attributes>
+			<mock:assertions-before-call>
+				<munit:assert-on-equals
+					message="#['Number of successful records must be 2']"
+					expectedValue="#[2L]" actualValue="#[payload.successfulRecords]"
+					doc:name="Assert Equals" />
+			</mock:assertions-before-call>
+		</mock:spy>
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[
+	{
+		"id": 1,
+		"status": 'Ready',
+		"type": 'CoffeeOrder'
+	},{
+		"id": 2,
+		"status": 'Not-Ready',
+		"type": 'CoffeeOrder'
+	}
+]]]></dw:set-payload>
+		</dw:transform-message>
+		<synchronize:run-and-wait timeout="1000000"
+			doc:name="Synchronize">
+			<batch:execute name="mule-simple-batch" doc:name="Run Batch mule-simple-batch" />
+		</synchronize:run-and-wait>
+		<mock:verify-call messageProcessor="mule:logger"
+			doc:name="Verify End Logger Call">
+			<mock:with-attributes>
+				<mock:with-attribute name="doc:name" whereValue="#['EndLogger']" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		<logger message="#['**************** Done ******************']"
+			level="INFO" doc:name="Logger" />
+	</munit:test>
+	<munit:test name="batch-test-validate-failed-record-count"
+		description="Verifies the number of failed records after batch execution.">
+		<mock:spy messageProcessor="mule:logger" doc:name="Spy For On complete">
+			<mock:with-attributes>
+				<mock:with-attribute name="doc:name" whereValue="#['EndLogger']" />
+			</mock:with-attributes>
+			<mock:assertions-before-call>
+				<munit:assert-on-equals expectedValue="#[1L]"
+					actualValue="#[payload.failedRecords]" doc:name="Assert Equals" />
+			</mock:assertions-before-call>
+		</mock:spy>
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[
+	{
+		"id": 1,
+		"status": 'Ready',
+		"type": 'CoffeeOrder'
+	},{
+		"id": 2,
+		"status": 'Not-Ready',
+		"type": 'CoffeeOrder'
+	},{
+		"id": 3,
+		"type": 'CoffeeOrder'
+	}
+]]]></dw:set-payload>
+		</dw:transform-message>
+		<synchronize:run-and-wait timeout="1000000"
+			doc:name="Synchronize">
+			<batch:execute name="mule-simple-batch" doc:name="Run Batch mule-simple-batch" />
+		</synchronize:run-and-wait>
+		<logger message="#['**************** Done ******************']"
+			level="INFO" doc:name="Logger" />
+	</munit:test>
+	
+	<munit:test name="batch-test-validate-step-flow-calling-route-1"
+		description="Verifies that record routing through Batch steps.">
+		
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[
+	{
+		"id": 1,
+		"status": 'Ready',
+		"type": 'CoffeeOrder'
+	}
+]]]></dw:set-payload>
+		</dw:transform-message>
+		
+		<synchronize:run-and-wait timeout="1000000"
+			doc:name="Synchronize">
+			<batch:execute name="mule-simple-batch" doc:name="Run Batch mule-simple-batch" />
+		</synchronize:run-and-wait>
+		
+		<mock:verify-call messageProcessor="mule:sub-flow"
+			times="1" doc:name="Verify Step 1 is called">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-1-process')]" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		
+		<mock:verify-call messageProcessor="mule:sub-flow"
+			times="1" doc:name="Verify Step 2 is called">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-2-process')]" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		
+		<mock:verify-call messageProcessor="mule:sub-flow"
+			times="0" doc:name="Verify Step 3 is NOT called">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-3-process')]" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		
+		<mock:verify-call messageProcessor="mule:logger"
+			doc:name="Verify Call">
+			<mock:with-attributes>
+				<mock:with-attribute name="doc:name" whereValue="#['EndLogger']" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		
+		<logger message="#['**************** Done ******************']"
+			level="INFO" doc:name="Logger" />
+	</munit:test>
+	
+	
+	<munit:test name="batch-test-validate-step-flow-calling-route-2"
+		description="Verifies that record routing through Batch steps.">
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[
+	{
+		"id": 1,
+		"status": 'Not-Ready',
+		"type": 'CoffeeOrder'
+	}
+]]]></dw:set-payload>
+		</dw:transform-message>
+		<synchronize:run-and-wait timeout="1000000"
+			doc:name="Synchronize">
+			<batch:execute name="mule-simple-batch" doc:name="Run Batch mule-simple-batch" />
+		</synchronize:run-and-wait>
+		<mock:verify-call messageProcessor="mule:sub-flow"
+			times="1" doc:name="Verify Step 1 is called">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-1-process')]" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		<mock:verify-call messageProcessor="mule:sub-flow"
+			times="0" doc:name="Verify Step 2 is NOT called">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-2-process')]" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		<mock:verify-call messageProcessor="mule:sub-flow"
+			times="1" doc:name="Verify Step 3 is called">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-3-process')]" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		<mock:verify-call messageProcessor="mule:logger"
+			doc:name="Verify Call">
+			<mock:with-attributes>
+				<mock:with-attribute name="doc:name" whereValue="#['EndLogger']" />
+			</mock:with-attributes>
+		</mock:verify-call>
+		<logger message="#['**************** Done ******************']"
+			level="INFO" doc:name="Logger" />
+	</munit:test>
+	
+	
+	<munit:test name="batch-step-1-processTest-1" description="Test">
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"id": 1,
+	"status": 'Ready',
+	"type": 'CoffeeOrder'
+}]]></dw:set-payload>
+		</dw:transform-message>
+		<set-variable variableName="BATCH_RECORD"
+			value="#[com.mulesoft.module.batch.record.BatchUtils.toRecord(payload)]"
+			doc:name="Variable" />
+		<flow-ref name="batch-step-1-process" doc:name="Flow-ref to batch-step-1-process" />
+		<munit:assert-on-equals expectedValue="#[1]"
+			actualValue="#[recordVars.id]" doc:name="Assert Id Equals" />
+		<munit:assert-on-equals expectedValue="#['Processing']"
+			actualValue="#[payload.status]" doc:name="Assert Status Equals" />
+	</munit:test>
+	
+	
+	<munit:test name="batch-step-1-processTest-2"
+		description="Verifies that status is set to Not-Processing">
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"id": 1,
+	"status": 'Not-Ready',
+	"type": 'CoffeeOrder'
+}]]></dw:set-payload>
+		</dw:transform-message>
+		<set-variable variableName="BATCH_RECORD"
+			value="#[com.mulesoft.module.batch.record.BatchUtils.toRecord(payload)]"
+			doc:name="Variable" />
+		<flow-ref name="batch-step-1-process" doc:name="Flow-ref to batch-step-1-process" />
+		<munit:assert-on-equals expectedValue="#[1]"
+			actualValue="#[recordVars.id]" doc:name="Assert Id Equals" />
+		<munit:assert-on-equals expectedValue="#['Not-Processing']"
+			actualValue="#[payload.status]" doc:name="Assert Status Equals" />
+	</munit:test>
+	
+	
+	<munit:test name="batch-step-2-processTest" description="Test">
+		<mock:spy messageProcessor="mule:sub-flow" doc:name="Spy Step 2 flow">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-2-process')]" />
+			</mock:with-attributes>
+			<mock:assertions-before-call>
+				<munit:assert-on-equals message="#['Record variable id must be set']"
+					expectedValue="#[1]" actualValue="#[recordVars.id]" doc:name="Assert Equals" />
+			</mock:assertions-before-call>
+		</mock:spy>
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"id": 1,
+	"status": 'Processing',
+	"type": 'CoffeeOrder'
+}]]></dw:set-payload>
+		</dw:transform-message>
+		<set-variable variableName="BATCH_RECORD"
+			value="#[com.mulesoft.module.batch.record.BatchUtils.toRecord(payload)]"
+			doc:name="Variable" />
+		<batch:set-record-variable variableName="id"
+			value="#[payload.id]" doc:name="Record Variable" />
+		<flow-ref name="batch-step-2-process" doc:name="Flow-ref to batch-step-2-process" />
+		<munit:assert-on-equals expectedValue="#['Processed']"
+			actualValue="#[payload.status]" doc:name="Assert Status Equals" />
+	</munit:test>
+	
+	
+	<munit:test name="batch-step-3-processTest" description="Test">
+		<mock:spy messageProcessor="mule:sub-flow" doc:name="Spy Step 3 flow">
+			<mock:with-attributes>
+				<mock:with-attribute name="name"
+					whereValue="#[matchContains('batch-step-3-process')]" />
+			</mock:with-attributes>
+			<mock:assertions-before-call>
+				<munit:assert-on-equals message="#['Record variable id must be set']"
+					expectedValue="#[1]" actualValue="#[recordVars.id]" doc:name="Assert Equals" />
+			</mock:assertions-before-call>
+		</mock:spy>
+		<dw:transform-message doc:name="Transform Message">
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"id": 1,
+	"status": 'Not-Processing',
+	"type": 'CoffeeOrder'
+}]]></dw:set-payload>
+		</dw:transform-message>
+		<set-variable variableName="BATCH_RECORD"
+			value="#[com.mulesoft.module.batch.record.BatchUtils.toRecord(payload)]"
+			doc:name="Variable" />
+		<batch:set-record-variable variableName="id"
+			value="#[payload.id]" doc:name="Record Variable" />
+		<flow-ref name="batch-step-3-process" doc:name="Flow-ref to batch-step-3-process" />
+		<munit:assert-on-equals expectedValue="#['Failed']"
+			actualValue="#[payload.status]" doc:name="Assert Status Equals" />
+	</munit:test>
+
+
+</mule>

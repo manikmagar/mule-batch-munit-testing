@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:core="http://www.mulesoft.org/schema/mule/core" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+    <validation:config name="Validation_Configuration" doc:name="Validation Configuration"/>
+    <flow name="mule-configFlow">
+        <poll doc:name="Poll">
+            <fixed-frequency-scheduler frequency="1" timeUnit="HOURS"/>
+            <dw:transform-message doc:name="Transform Message">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[
+	{
+		"id": 1,
+		"status": 'Ready',
+		"type": 'CoffeeOrder'
+	}
+]]]></dw:set-payload>
+            </dw:transform-message>
+        </poll>
+        <batch:execute name="simple_batch_job" doc:name="simple_batch_job"/>
+        <logger message="#[payload]" level="INFO" doc:name="Logger"/>
+    </flow>
+    <batch:job name="mule-simple-batch">
+        <batch:input>
+            <dw:transform-message doc:name="Transform Message">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload filter $.status != 'MessedUp']]></dw:set-payload>
+            </dw:transform-message>
+        </batch:input>
+        <batch:process-records>
+            <batch:step name="Batch_Step_1">
+                <flow-ref name="batch-step-1-process" doc:name="Flow batch-step-1-process"/>
+            </batch:step>
+            <batch:step name="Batch_Step_2"  accept-expression="#[payload.status == 'Processing']">
+            	<flow-ref name="batch-step-2-process" doc:name="Flow batch-step-2-process"/>
+            </batch:step>
+            <batch:step name="Batch_Step_3" accept-expression="#[payload.status == 'Not-Processing']">
+            	<flow-ref name="batch-step-3-process" doc:name="Flow batch-step-3-process"/>
+            </batch:step>
+        </batch:process-records>
+        <batch:on-complete>
+            <logger message="#['Batch Processing Result: Loaded:'+ payload.loadedRecords + ', successful: '+ payload.successfulRecords + ', failed: '+ payload.failedRecords]" level="INFO" doc:name="EndLogger"/>
+        </batch:on-complete>
+    </batch:job>
+    <sub-flow name="batch-step-1-process">
+        <logger message="#['Processing Step 1 for Id:' + payload.id + ' with status: ' + payload.status.trim()]" level="INFO" doc:name="Logger"/>
+		<batch:set-record-variable variableName="id" value="#[payload.id]" doc:name="Record Variable"/>
+         
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+(payload ++ (status: 'Processing' when payload.status == 'Ready' otherwise 'Not-Processing'))]]></dw:set-payload>
+        </dw:transform-message>
+    </sub-flow>
+    <sub-flow name="batch-step-2-process">
+        <logger message="#['Processing Step 2 for Id:' + recordVars.id + ' with status: ' + payload.status]" level="INFO" doc:name="Logger"/>
+                <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+(payload ++ (status: 'Processed'))]]></dw:set-payload>
+        </dw:transform-message>
+    </sub-flow>
+    <sub-flow name="batch-step-3-process">
+        <logger message="#['Processing Step 3 for Id:' + recordVars.id + ' with status: ' + payload.status]" level="INFO" doc:name="Logger"/>
+                <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+(payload ++ (status: 'Failed'))]]></dw:set-payload>
+        </dw:transform-message>
+    </sub-flow>
+</mule>
